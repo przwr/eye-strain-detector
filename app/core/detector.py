@@ -19,6 +19,7 @@ from app.core.landmarks import LandmarkDetector
 from app.core.perclos import PerclosTracker
 from app.core.proximity import estimate_proximity
 from app.core.strain import StrainScorer
+from app.ml.eye_state import EyeStateClassifier
 
 COL_GREEN = (0, 220, 80)
 COL_YELLOW = (0, 220, 220)
@@ -32,6 +33,7 @@ STRAIN_COL = {"low": COL_GREEN, "medium": COL_YELLOW, "high": COL_RED}
 class FrameMetrics:
     avg_ear: float
     threshold: float
+    cnn_open_prob: float
     blink_count: int
     blink_rate: float
     perclos: float
@@ -56,6 +58,8 @@ class EyeStrainDetector:
         self.calibrator = Calibrator()
         self.scorer = StrainScorer()
         self.alerts = AlertManager()
+        self.eye_state = EyeStateClassifier()
+        self.cnn_open_threshold = 0.5  # P(open) below this = CNN says "closed"
         self.ear_history: deque[float] = deque(maxlen=90)
         self._fps: deque[float] = deque(maxlen=30)
         self._frame_idx = 0
@@ -79,6 +83,7 @@ class EyeStrainDetector:
 
         avg_ear = 0.0
         proximity = "NO FACE"
+        cnn_open = -1.0  # -1 = not evaluated this frame
         face = lm is not None
         if face:
             le = compute_ear(lm, LEFT_EYE_IDX, w, h)
@@ -91,8 +96,19 @@ class EyeStrainDetector:
                 self.calibrator.update(avg_ear, now)
             else:
                 thr = self.threshold
-                self.blink.update(avg_ear, thr, now)
-                self.perclos.update(avg_ear < thr, now)
+                ear_closed = avg_ear < thr
+                # Fuse: an eye counts as closed only when BOTH the geometry (EAR)
+                # and the trained CNN agree it's closed. Falls back to EAR-only if
+                # the model is unavailable. Removes EAR false positives from head
+                # tilts / glasses glare.
+                prob = self.eye_state.predict_open_prob(rgb, lm, w, h)
+                if prob is not None:
+                    cnn_open = prob
+                    eye_closed = ear_closed and (prob < self.cnn_open_threshold)
+                else:
+                    eye_closed = ear_closed
+                self.blink.update_closed(eye_closed, now)
+                self.perclos.update(eye_closed, now)
 
         screen_min = (now - self._start) / 60.0
         blink_rate = self.blink.blinks_per_minute(now)
@@ -110,6 +126,7 @@ class EyeStrainDetector:
         return FrameMetrics(
             avg_ear=avg_ear,
             threshold=self.threshold,
+            cnn_open_prob=cnn_open,
             blink_count=self.blink.blink_count,
             blink_rate=blink_rate,
             perclos=perclos_val,
@@ -126,7 +143,7 @@ class EyeStrainDetector:
         h, w = frame.shape[:2]
         f, fb = cv2.FONT_HERSHEY_SIMPLEX, cv2.FONT_HERSHEY_DUPLEX
         ov = frame.copy()
-        cv2.rectangle(ov, (0, 0), (330, 190), COL_DARK, -1)
+        cv2.rectangle(ov, (0, 0), (340, 210), COL_DARK, -1)
         cv2.addWeighted(ov, 0.55, frame, 0.45, 0, frame)
 
         cv2.putText(frame, "EYE STRAIN DETECTOR v2", (10, 24), fb, 0.55, COL_GREEN, 1, cv2.LINE_AA)
@@ -134,11 +151,16 @@ class EyeStrainDetector:
         cv2.putText(frame, f"Rate      : {m.blink_rate:.0f}/min", (10, 74), f, 0.5, COL_WHITE, 1, cv2.LINE_AA)
         ecol = COL_RED if m.avg_ear < m.threshold else COL_WHITE
         cv2.putText(frame, f"EAR       : {m.avg_ear:.3f} (thr {m.threshold:.3f})", (10, 96), f, 0.45, ecol, 1, cv2.LINE_AA)
-        cv2.putText(frame, f"PERCLOS   : {m.perclos*100:.0f}%", (10, 118), f, 0.5, COL_WHITE, 1, cv2.LINE_AA)
+        if m.cnn_open_prob >= 0:
+            ccol = COL_RED if m.cnn_open_prob < self.cnn_open_threshold else COL_GREEN
+            cv2.putText(frame, f"CNN P(open): {m.cnn_open_prob:.2f}  [FUSED]", (10, 118), f, 0.45, ccol, 1, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "CNN       : EAR-only (no model)", (10, 118), f, 0.45, COL_YELLOW, 1, cv2.LINE_AA)
+        cv2.putText(frame, f"PERCLOS   : {m.perclos*100:.0f}%", (10, 140), f, 0.5, COL_WHITE, 1, cv2.LINE_AA)
         pcol = COL_RED if m.proximity == "TOO CLOSE" else COL_GREEN
-        cv2.putText(frame, f"Distance  : {m.proximity}", (10, 140), f, 0.5, pcol, 1, cv2.LINE_AA)
+        cv2.putText(frame, f"Distance  : {m.proximity}", (10, 162), f, 0.5, pcol, 1, cv2.LINE_AA)
         scol = STRAIN_COL.get(m.strain, COL_WHITE)
-        cv2.putText(frame, f"STRAIN    : {m.strain.upper()} ({m.strain_score:.0f})", (10, 164), fb, 0.55, scol, 1, cv2.LINE_AA)
+        cv2.putText(frame, f"STRAIN    : {m.strain.upper()} ({m.strain_score:.0f})", (10, 186), fb, 0.55, scol, 1, cv2.LINE_AA)
         cv2.putText(frame, f"FPS {m.fps:.0f}", (270, 24), f, 0.45, COL_YELLOW, 1, cv2.LINE_AA)
 
         if self.calibrator.calibrating:

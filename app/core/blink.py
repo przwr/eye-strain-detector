@@ -17,10 +17,17 @@ class BlinkTracker:
         self._blink_times: deque[float] = deque()
 
     def update(self, ear: float, threshold: float, ts: float | None = None) -> bool:
-        """Feed one frame. Returns True on the frame a blink completes."""
+        """Feed one frame via the EAR-vs-threshold rule (EAR-only path)."""
+        return self.update_closed(ear < threshold, ts)
+
+    def update_closed(self, is_closed: bool, ts: float | None = None) -> bool:
+        """Feed one frame with an already-decided closed state (fusion path).
+
+        Returns True on the frame a blink completes.
+        """
         ts = time.time() if ts is None else ts
         blinked = False
-        if ear < threshold:
+        if is_closed:
             self._consec_below += 1
         else:
             if self._consec_below >= self.consec_frames:
