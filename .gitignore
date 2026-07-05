@@ -1,8 +1,13 @@
 ﻿.venv/
+.venv-1/
 __pycache__/
+node_modules/
+frontend/dist/
+.netlify/
 *.db
 *.sqlite3
 kaggle.json
 *.env
 .env
 .DS_Store
+*.tsbuildinfo

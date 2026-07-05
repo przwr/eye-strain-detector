@@ -1,6 +1,8 @@
-# eye-strain-detector
 # Iris — Digital Eye Strain Monitoring System
- 
+
+**🔗 Dashboard: [iris-eye-strain.netlify.app](https://iris-eye-strain.netlify.app)**
+*(the UI is hosted on Netlify; the camera + ML engine run locally — see [Setup](#setup))*
+
 A real-time desktop application that monitors digital eye strain through your webcam.
 It tracks blink rate, eye-closure (PERCLOS), and screen proximity, fuses a trained CNN
 with geometric eye analysis for robust blink detection, computes a live strain index,
@@ -54,6 +56,16 @@ The CV/ML engine is framework-agnostic: the same code runs standalone in an Open
 (`run_local.py`) and inside the FastAPI service. Because the webcam is local hardware, the
 backend runs on the user's machine (localhost); the browser receives the annotated video
 stream and never accesses the camera directly.
+
+The dashboard is reachable two ways, both talking to the same local backend:
+
+- **`http://localhost:8000`** — the backend serves the built dashboard itself
+  (same origin, works everywhere).
+- **[iris-eye-strain.netlify.app](https://iris-eye-strain.netlify.app)** — the same UI
+  hosted on Netlify. Chrome treats a public site calling `localhost` as a
+  *private-network request*, so the backend answers the required CORS preflight
+  (`allow_private_network`); if Chrome still asks to "access devices on your local
+  network", click **Allow**.
  
 ---
  
@@ -78,7 +90,7 @@ matrix) → export to ONNX.
  
 **CV / ML:** Python, OpenCV, MediaPipe, TensorFlow/Keras (training), ONNX, onnxruntime
 **Backend:** FastAPI, Uvicorn, SQLAlchemy, SQLite, WebSockets
-**Frontend:** React, TypeScript, Vite, Recharts
+**Frontend:** React, TypeScript, Vite, Recharts (dashboard hosted on Netlify)
 **Alerts:** winsound / plyer
  
 ---
@@ -87,49 +99,53 @@ matrix) → export to ONNX.
  
 ```
 eye-strain-detector/
-├── backend/
-│   ├── app/
-│   │   ├── core/        engine: landmarks, EAR, blink, PERCLOS, proximity,
-│   │   │                calibration, strain, alerts, detector
-│   │   ├── ml/          ONNX inference wrapper + trained model
-│   │   ├── api/         REST routes + WebSocket
-│   │   ├── db/          SQLite models + queries
-│   │   └── services/    camera loop / session manager
-│   ├── run_local.py     standalone OpenCV-window mode
-│   └── requirements.txt
-├── ml/                  Colab training notebook + pipeline
+├── app/
+│   ├── core/            engine: landmarks, EAR, blink, PERCLOS, proximity,
+│   │                    calibration, strain, alerts, detector
+│   ├── ml/              ONNX inference wrapper + trained model
+│   ├── api/             REST routes + WebSocket
+│   ├── db/              SQLite models + queries
+│   └── services/        camera loop / session manager
 ├── frontend/            React + Vite + TypeScript dashboard
-└── docs/                report, screenshots, confusion matrix
+├── tests/               backend tests
+├── run_local.py         standalone OpenCV-window mode
+└── requirements.txt
 ```
  
 ---
  
 ## Setup
  
-Run the **backend** and **frontend** in two terminals. (Windows shown; on macOS use
-`source .venv/bin/activate` and `python3`.)
- 
-### Backend
+(Windows shown; on macOS use `source .venv/bin/activate` and `python3`.)
+
+### Quick start — one server
 ```bash
-cd backend
 python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload   # serves http://localhost:8000
+
+cd frontend && npm install && npm run build && cd ..   # build the dashboard once
+
+uvicorn app.main:app            # serves API + dashboard at http://localhost:8000
 ```
- 
-### Frontend
+
+Open **http://localhost:8000**, click **Start monitoring**, then **Calibrate**
+(hold eyes open ~3s). Stop the server with **Ctrl+C** (closing the terminal window
+can leave the camera process orphaned).
+
+### Development mode — two terminals
 ```bash
+# terminal 1 — backend
+.venv\Scripts\activate
+uvicorn app.main:app --reload   # http://localhost:8000
+
+# terminal 2 — frontend with hot reload
 cd frontend
-npm install
-npm run dev                      # opens http://localhost:5173
+npm run dev                      # http://localhost:5173 (proxies to the backend)
 ```
- 
-Open the dashboard, click **Start monitoring**, then **Calibrate** (hold eyes open ~3s).
- 
+
 ### Standalone mode (no web UI)
 ```bash
-cd backend
 python run_local.py             # C = calibrate, ESC = quit
 ```
  

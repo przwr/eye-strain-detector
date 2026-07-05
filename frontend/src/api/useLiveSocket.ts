@@ -12,7 +12,9 @@ export function useLiveSocket(active: boolean) {
 
   useEffect(() => {
     if (!active) return;
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/live`;
+    const url =
+      import.meta.env.VITE_WS_URL ??
+      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/live`;
     const socket = new WebSocket(url);
     ws.current = socket;
     socket.onopen = () => setConnected(true);
