@@ -11,6 +11,7 @@ export interface LiveMetric {
   strain: StrainLevel;
   strain_score: number;
   screen_time_min: number;
+  total_screen_time_min: number;
   fps: number;
   face_detected: boolean;
   frame: string | null;      // base64 JPEG

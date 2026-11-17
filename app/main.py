@@ -1,4 +1,5 @@
 """FastAPI application entry point."""
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -28,6 +29,21 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # Start monitoring with the service; the dashboard is only a viewer.
+    # Non-fatal: a busy/missing camera must not prevent the API from booting.
+    from app.services.session_manager import manager
+    try:
+        manager.start()
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger(__name__).warning("Auto-start monitoring failed: %s", e)
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    # Close the open session row so restarts don't leave phantom "open" sessions.
+    # stop() is a no-op when nothing is open (also covers a failed camera start).
+    from app.services.session_manager import manager
+    manager.stop()
 
 
 @app.get("/health")

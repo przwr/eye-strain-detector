@@ -18,7 +18,7 @@ from app.core.ear import LEFT_EYE_IDX, RIGHT_EYE_IDX, compute_ear
 from app.core.landmarks import LandmarkDetector
 from app.core.perclos import PerclosTracker
 from app.core.proximity import estimate_proximity
-from app.core.strain import StrainScorer
+from app.core.strain import StrainLevel, StrainResult, StrainScorer
 from app.ml.eye_state import EyeStateClassifier
 
 COL_GREEN = (0, 220, 80)
@@ -41,6 +41,7 @@ class FrameMetrics:
     strain: str
     strain_score: float
     screen_time_min: float
+    total_screen_time_min: float
     fps: float
     face_detected: bool
 
@@ -63,7 +64,15 @@ class EyeStrainDetector:
         self.ear_history: deque[float] = deque(maxlen=90)
         self._fps: deque[float] = deque(maxlen=30)
         self._frame_idx = 0
-        self._start = time.time()
+        self._start = time.monotonic()
+        self._total_active_sec = 0.0
+        self._prev_frame_ts: float | None = None
+        self._in_break = False
+        self._last_face_ts: float = time.monotonic()
+        # startup grace: blink/PERCLOS windows are empty for the first minute
+        self._blink_grace_until = time.monotonic() + 60.0
+        # being away this long counts as a break: timer resets when you return
+        self._break_gap_sec = 60.0
 
     @property
     def threshold(self) -> float:
@@ -79,13 +88,19 @@ class EyeStrainDetector:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         lm = self.landmarks.detect(rgb, self._frame_idx)
         self._frame_idx += 1
-        now = time.time()
+        now = time.monotonic()
 
         avg_ear = 0.0
         proximity = "NO FACE"
         cnn_open = -1.0  # -1 = not evaluated this frame
         face = lm is not None
         if face:
+            if now - self._last_face_ts >= self._break_gap_sec:
+                # returning after a break (>= break_gap_sec away): timer restarts
+                self._start = now
+                self._blink_grace_until = now + 60.0
+                self._in_break = False
+            self._last_face_ts = now
             le = compute_ear(lm, LEFT_EYE_IDX, w, h)
             re = compute_ear(lm, RIGHT_EYE_IDX, w, h)
             avg_ear = (le + re) / 2.0
@@ -113,13 +128,31 @@ class EyeStrainDetector:
         screen_min = (now - self._start) / 60.0
         blink_rate = self.blink.blinks_per_minute(now)
         perclos_val = self.perclos.value(now)
-        strain = self.scorer.score(
-            blink_rate=blink_rate,
-            perclos=perclos_val,
-            screen_time_min=screen_min,
-            proximity=proximity if face else "OK",
-        )
+        if face:
+            # windows are empty right after startup/return: 0/min blink rate and
+            # warm-up PERCLOS are missing data, not strain -- hide from scorer
+            blink_rate_for_score = None if now < self._blink_grace_until else blink_rate
+            perclos_for_score = None if now < self._blink_grace_until else perclos_val
+            strain = self.scorer.score(
+                blink_rate=blink_rate_for_score,
+                perclos=perclos_for_score,
+                screen_time_min=screen_min,
+                proximity=proximity,
+            )
+        else:
+            # nobody in frame: nothing to measure, don't fake strain signals
+            strain = StrainResult(level=StrainLevel.LOW, score=0.0)
 
+        # total = all desk time minus real breaks; brief look-aways still count
+        if not face and now - self._last_face_ts >= self._break_gap_sec:
+            self._in_break = True
+        if self._prev_frame_ts is not None and not self._in_break:
+            dt = now - self._prev_frame_ts
+            if 0 <= dt < 60:
+                self._total_active_sec += dt
+        self._prev_frame_ts = now
+
+        total_min = self._total_active_sec / 60.0
         self._fps.append(time.perf_counter() - t0)
         fps = 1.0 / (sum(self._fps) / len(self._fps) + 1e-9)
 
@@ -134,6 +167,7 @@ class EyeStrainDetector:
             strain=strain.level.value,
             strain_score=strain.score,
             screen_time_min=screen_min,
+            total_screen_time_min=total_min,
             fps=fps,
             face_detected=face,
         )

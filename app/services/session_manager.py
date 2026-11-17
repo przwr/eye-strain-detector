@@ -83,6 +83,8 @@ class SessionManager:
         if not cap.isOpened():
             self._error = "Could not open camera."
             self._running = False
+            crud.end_session(db, self._session_id)
+            self._session_id = None
             return
         try:
             while self._running:

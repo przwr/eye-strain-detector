@@ -50,8 +50,12 @@ export default function Dashboard() {
                 <div className="v">{latest?.blink_count ?? "—"}</div>
               </div>
               <div className="stat">
-                <div className="k">Screen time</div>
+                <div className="k">Since break</div>
                 <div className="v">{fmt(latest?.screen_time_min, 1)}<span className="u">min</span></div>
+              </div>
+              <div className="stat">
+                <div className="k">Total screen</div>
+                <div className="v">{fmt(latest?.total_screen_time_min, 1)}<span className="u">min</span></div>
               </div>
             </div>
             <Controls running={running} onStart={start} onStop={stop} onCalibrate={calibrate} />

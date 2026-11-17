@@ -35,8 +35,8 @@ class StrainScorer:
     def score(
         self,
         *,
-        blink_rate: float,
-        perclos: float,
+        blink_rate: float | None,
+        perclos: float | None,
         screen_time_min: float,
         proximity: str,
     ) -> StrainResult:
@@ -44,13 +44,14 @@ class StrainScorer:
         reasons: list[str] = []
 
         # 1. Low blink rate -- primary strain signal (normal ~15-20/min).
-        if blink_rate < self.low_blink_rate:
+        # None = insufficient data (e.g. right after returning to the desk).
+        if blink_rate is not None and blink_rate < self.low_blink_rate:
             deficit = (self.low_blink_rate - blink_rate) / self.low_blink_rate
             score += 45 * min(1.0, deficit)
             reasons.append(f"low blink rate ({blink_rate:.0f}/min)")
 
         # 2. PERCLOS -- fatigue / prolonged closure.
-        if perclos > self.perclos_warn:
+        if perclos is not None and perclos > self.perclos_warn:
             over = (perclos - self.perclos_warn) / (1 - self.perclos_warn)
             score += 30 * min(1.0, over)
             reasons.append(f"high eye-closure ({perclos * 100:.0f}%)")
