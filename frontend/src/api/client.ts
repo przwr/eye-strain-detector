@@ -19,7 +19,8 @@ export const api = {
   start: () => post("/api/session/start"),
   stop: () => post("/api/session/stop"),
   calibrate: () => post("/api/session/calibrate"),
-  status: () => get<{ running: boolean; session_id: number | null }>("/api/session/status"),
+  glasses: (enabled: boolean) => post(`/api/session/glasses?enabled=${enabled}`),
+  status: () => get<{ running: boolean; session_id: number | null; glasses: boolean }>("/api/session/status"),
   sessions: () => get<SessionSummary[]>("/api/sessions"),
   session: (id: number) => get<SessionSummary & { samples: any[] }>(`/api/sessions/${id}`),
 };

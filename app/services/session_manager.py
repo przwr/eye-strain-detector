@@ -20,6 +20,7 @@ class SessionManager:
         self._session_id: int | None = None
         self._last_sample = 0.0
         self._error: str | None = None
+        self._glasses = False
 
     @property
     def running(self) -> bool:
@@ -38,6 +39,7 @@ class SessionManager:
 
         self._error = None
         self._detector = EyeStrainDetector(camera_index=camera_index)
+        self._detector.glasses_mode = self._glasses
         db = SessionLocal()
         try:
             self._session_id = crud.create_session(db).id
@@ -51,6 +53,17 @@ class SessionManager:
     def calibrate(self) -> None:
         if self._detector:
             self._detector.start_calibration()
+
+    @property
+    def glasses(self) -> bool:
+        return self._glasses
+
+    def set_glasses(self, enabled: bool) -> None:
+        # tinted lenses defeat the blink CNN; flag lives on the manager so it
+        # survives monitoring restarts
+        self._glasses = bool(enabled)
+        if self._detector:
+            self._detector.glasses_mode = self._glasses
 
     def stop(self) -> int | None:
         self._running = False

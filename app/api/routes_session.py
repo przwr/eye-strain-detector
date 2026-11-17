@@ -29,9 +29,15 @@ def calibrate():
     return {"ok": True}
 
 
+@router.post("/session/glasses")
+def glasses_mode(enabled: bool):
+    manager.set_glasses(enabled)
+    return {"glasses": manager.glasses}
+
+
 @router.get("/session/status")
 def status():
-    return {"running": manager.running, "session_id": manager.session_id}
+    return {"running": manager.running, "session_id": manager.session_id, "glasses": manager.glasses}
 
 
 @router.get("/sessions")

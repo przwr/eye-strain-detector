@@ -9,15 +9,21 @@ import BlinkRateChart from "../components/BlinkRateChart";
 
 export default function Dashboard() {
   const [running, setRunning] = useState(false);
+  const [glasses, setGlasses] = useState(false);
   const { latest, history, connected, reset } = useLiveSocket(running);
 
   useEffect(() => {
-    api.status().then((s) => setRunning(s.running)).catch(() => {});
+    api.status().then((s) => { setRunning(s.running); setGlasses(s.glasses); }).catch(() => {});
   }, []);
 
   const start = async () => { await api.start(); reset(); setRunning(true); };
   const stop = async () => { await api.stop(); setRunning(false); };
   const calibrate = () => { api.calibrate().catch(() => {}); };
+  const toggleGlasses = () => {
+    const next = !glasses;
+    setGlasses(next);
+    api.glasses(next).catch(() => setGlasses(!next));
+  };
 
   const score = latest?.strain_score ?? 0;
   const level = latest?.strain ?? "low";
@@ -58,7 +64,7 @@ export default function Dashboard() {
                 <div className="v">{fmt(latest?.total_screen_time_min, 1)}<span className="u">min</span></div>
               </div>
             </div>
-            <Controls running={running} onStart={start} onStop={stop} onCalibrate={calibrate} />
+            <Controls running={running} glasses={glasses} onStart={start} onStop={stop} onCalibrate={calibrate} onToggleGlasses={toggleGlasses} />
             {running && !connected && (
               <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 12, fontFamily: "var(--mono)" }}>
                 connecting to live feed…

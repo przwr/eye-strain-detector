@@ -71,6 +71,8 @@ class EyeStrainDetector:
         self._last_face_ts: float = time.monotonic()
         # startup grace: blink/PERCLOS windows are empty for the first minute
         self._blink_grace_until = time.monotonic() + 60.0
+        # glasses mode: skip the blink CNN (tinted lenses defeat it), EAR-only
+        self.glasses_mode = False
         # being away this long counts as a break: timer resets when you return
         self._break_gap_sec = 60.0
 
@@ -116,12 +118,16 @@ class EyeStrainDetector:
                 # and the trained CNN agree it's closed. Falls back to EAR-only if
                 # the model is unavailable. Removes EAR false positives from head
                 # tilts / glasses glare.
-                prob = self.eye_state.predict_open_prob(rgb, lm, w, h)
-                if prob is not None:
-                    cnn_open = prob
-                    eye_closed = ear_closed and (prob < self.cnn_open_threshold)
-                else:
+                if self.glasses_mode:
+                    # tinted lenses fool the CNN: trust EAR alone
                     eye_closed = ear_closed
+                else:
+                    prob = self.eye_state.predict_open_prob(rgb, lm, w, h)
+                    if prob is not None:
+                        cnn_open = prob
+                        eye_closed = ear_closed and (prob < self.cnn_open_threshold)
+                    else:
+                        eye_closed = ear_closed
                 self.blink.update_closed(eye_closed, now)
                 self.perclos.update(eye_closed, now)
 
