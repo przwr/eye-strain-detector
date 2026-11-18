@@ -28,6 +28,11 @@ export default function Dashboard() {
   const score = latest?.strain_score ?? 0;
   const level = latest?.strain ?? "low";
   const fmt = (n: number | undefined, d = 0) => (n === undefined ? "—" : n.toFixed(d));
+  const dur = (n: number | undefined) => {
+    if (n === undefined) return "—";
+    const m = Math.floor(n);
+    return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`;
+  };
 
   return (
     <div>
@@ -57,11 +62,11 @@ export default function Dashboard() {
               </div>
               <div className="stat">
                 <div className="k">Since break</div>
-                <div className="v">{fmt(latest?.screen_time_min, 1)}<span className="u">min</span></div>
+                <div className="v">{dur(latest?.screen_time_min)}<span className="u">since break</span></div>
               </div>
               <div className="stat">
                 <div className="k">Total screen</div>
-                <div className="v">{fmt(latest?.total_screen_time_min, 1)}<span className="u">min</span></div>
+                <div className="v">{dur(latest?.total_screen_time_min)}<span className="u">total</span></div>
               </div>
             </div>
             <Controls running={running} glasses={glasses} onStart={start} onStop={stop} onCalibrate={calibrate} onToggleGlasses={toggleGlasses} />
