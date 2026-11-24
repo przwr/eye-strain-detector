@@ -244,7 +244,7 @@ class EyeStrainDetector:
                     continue
                 frame = cv2.flip(frame, 1)
                 metrics = self.process_frame(frame)
-                self.alerts.update(proximity=metrics.proximity, strain=metrics.strain, face_detected=metrics.face_detected)
+                self.alerts.update(proximity=metrics.proximity, strain=metrics.strain, face_detected=metrics.face_detected, ts=now)
                 self._draw_hud(frame, metrics)
                 cv2.imshow("Digital Eye Strain Detection System", frame)
                 key = cv2.waitKey(1) & 0xFF

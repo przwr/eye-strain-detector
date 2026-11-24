@@ -59,19 +59,21 @@ def notify(title, message):
 
 
 class AlertManager:
-    def __init__(self, proximity_cooldown=8.0, strain_cooldown=30.0,
+    def __init__(self, proximity_cooldown=60.0, strain_cooldown=30.0,
                  proximity_sustain_sec=10.0):
         self.proximity_cooldown = proximity_cooldown
         self.strain_cooldown = strain_cooldown
         # momentary leans / sitting down must not alert: require sustained closeness
         self.proximity_sustain_sec = proximity_sustain_sec
-        self._last_prox = 0.0
-        self._last_strain = 0.0
+        self._last_prox = -1e9
+        self._last_strain = -1e9
         self._prev_strain = "low"
         self._too_close_since: float | None = None
 
     def update(self, *, proximity, strain, face_detected, ts=None):
-        ts = time.time() if ts is None else ts
+        # monotonic clock: wall-clock NTP jumps reset the cooldowns and caused
+        # an alert storm (one notify-send per camera frame)
+        ts = time.monotonic() if ts is None else ts
         if not face_detected:
             self._prev_strain = strain
             return
@@ -89,8 +91,9 @@ class AlertManager:
             notify("Move back from screen", "You're sitting too close to the display.")
             self._last_prox = ts
         if strain == "high":
-            worsened = self._prev_strain != "high"
-            if worsened or ts - self._last_strain >= self.strain_cooldown:
+            # no "just worsened" bypass: a score oscillating around the HIGH
+            # threshold must not fire on every re-entry
+            if ts - self._last_strain >= self.strain_cooldown:
                 beep(1200, 500)
                 notify("Time for a break",
                        "High eye strain detected. Try the 20-20-20 rule: look 20 ft away for 20 seconds.")
